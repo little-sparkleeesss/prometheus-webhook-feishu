@@ -18,7 +18,7 @@ Alertmanager --POST /webhook--> prometheus-webhook-feishu --POST--> Lark/飞书�
 
 - 只接受 `POST`，其他方法返回 405。
 - 必须携带 `Content-Length`，body 上限 1 MiB。
-- 设置 `WEBHOOK_TOKEN` 时必须携带 `Authorization: Bearer <token>`。
+- 必须携带 `Authorization: Bearer <token>`。
 - 并发上限 10，超出返回 503。
 - 成功返回 `{"status":"ok"}`。
 - Lark 业务错误、网络错误或超时返回 502，让 Alertmanager 重试。
@@ -32,7 +32,7 @@ Alertmanager --POST /webhook--> prometheus-webhook-feishu --POST--> Lark/飞书�
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
 | `FEISHU_WEBHOOK_URL` | 是 | 必须是 `https://open.feishu.cn/open-apis/bot/v2/hook/...` 或 `https://open.larksuite.com/open-apis/bot/v2/hook/...`，不允许端口和用户信息 |
-| `WEBHOOK_TOKEN` | 生产必填 | 共享 Bearer token；为空时启动日志会警告并放行所有请求 |
+| `WEBHOOK_TOKEN` | 是 | 共享 Bearer token；为空或为字面量 `<no value>` 时启动失败 |
 | `PORT` | 否 | 默认 `5000`，监听 `0.0.0.0` |
 
 ## 飞书机器人设置

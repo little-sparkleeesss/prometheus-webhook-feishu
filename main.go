@@ -62,6 +62,10 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if err := validateWebhookURL(webhookURL); err != nil {
 		return config{}, err
 	}
+	token := getenv("WEBHOOK_TOKEN")
+	if token == "" || token == "<no value>" {
+		return config{}, errors.New("WEBHOOK_TOKEN is required")
+	}
 	port := getenv("PORT")
 	if port == "" {
 		port = defaultPort
@@ -72,7 +76,7 @@ func loadConfig(getenv func(string) string) (config, error) {
 	}
 	return config{
 		webhookURL: webhookURL,
-		token:      getenv("WEBHOOK_TOKEN"),
+		token:      token,
 		port:       strconv.Itoa(portNumber),
 	}, nil
 }
@@ -85,10 +89,6 @@ func main() {
 		logger.Error("invalid configuration", "event", "startup_failed", "reason", err.Error())
 		os.Exit(1)
 	}
-	if cfg.token == "" {
-		logger.Warn("WEBHOOK_TOKEN is empty; webhook authentication is disabled", "event", "auth_disabled")
-	}
-
 	server := &http.Server{
 		Addr:              listenAddr + ":" + cfg.port,
 		Handler:           newHandler(cfg, newLarkClient(cfg.webhookURL, defaultHTTPClient()), logger),

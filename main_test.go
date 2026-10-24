@@ -40,7 +40,10 @@ func TestValidateWebhookURLInvalid(t *testing.T) {
 }
 
 func TestLoadConfigDefaults(t *testing.T) {
-	env := map[string]string{"FEISHU_WEBHOOK_URL": validWebhookURL}
+	env := map[string]string{
+		"FEISHU_WEBHOOK_URL": validWebhookURL,
+		"WEBHOOK_TOKEN":      "secret",
+	}
 	cfg, err := loadConfig(func(key string) string { return env[key] })
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
@@ -48,8 +51,20 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.port != "5000" {
 		t.Fatalf("port = %q, want 5000", cfg.port)
 	}
-	if cfg.token != "" {
-		t.Fatalf("token = %q, want empty", cfg.token)
+	if cfg.token != "secret" {
+		t.Fatalf("token = %q, want secret", cfg.token)
+	}
+}
+
+func TestLoadConfigRejectsPlaceholderToken(t *testing.T) {
+	for _, token := range []string{"", "<no value>"} {
+		env := map[string]string{
+			"FEISHU_WEBHOOK_URL": validWebhookURL,
+			"WEBHOOK_TOKEN":      token,
+		}
+		if _, err := loadConfig(func(key string) string { return env[key] }); err == nil {
+			t.Fatalf("loadConfig with WEBHOOK_TOKEN=%q = nil error, want error", token)
+		}
 	}
 }
 
@@ -74,9 +89,9 @@ func TestLoadConfigOverrides(t *testing.T) {
 func TestLoadConfigErrors(t *testing.T) {
 	cases := []map[string]string{
 		{},
-		{"FEISHU_WEBHOOK_URL": validWebhookURL, "PORT": "abc"},
-		{"FEISHU_WEBHOOK_URL": validWebhookURL, "PORT": "0"},
-		{"FEISHU_WEBHOOK_URL": validWebhookURL, "PORT": "70000"},
+		{"FEISHU_WEBHOOK_URL": validWebhookURL, "WEBHOOK_TOKEN": "secret", "PORT": "abc"},
+		{"FEISHU_WEBHOOK_URL": validWebhookURL, "WEBHOOK_TOKEN": "secret", "PORT": "0"},
+		{"FEISHU_WEBHOOK_URL": validWebhookURL, "WEBHOOK_TOKEN": "secret", "PORT": "70000"},
 	}
 	for _, env := range cases {
 		if _, err := loadConfig(func(key string) string { return env[key] }); err == nil {
