@@ -1,0 +1,6 @@
+.git
+.github
+*.md
+prometheus-webhook-feishu
+*.test
+*.out
