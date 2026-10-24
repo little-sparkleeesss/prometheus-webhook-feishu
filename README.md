@@ -74,3 +74,7 @@ podman run --rm -p 5000:5000 \
   -e WEBHOOK_TOKEN='change-me' \
   prometheus-webhook-feishu
 ```
+
+## 许可证
+
+本项目基于 [MIT License](LICENSE) 开源。
