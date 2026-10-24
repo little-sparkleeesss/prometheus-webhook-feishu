@@ -108,6 +108,9 @@ func (c *larkClient) send(ctx context.Context, msg *cardMessage) error {
 			msg:        parsed.message(),
 		}
 	}
+	if parsed.Code == nil && parsed.StatusCode == nil {
+		return &larkError{kind: "schema", httpStatus: resp.StatusCode}
+	}
 	if parsed.Code != nil && *parsed.Code != 0 {
 		return &larkError{
 			kind:       "api",

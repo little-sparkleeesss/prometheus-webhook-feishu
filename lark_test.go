@@ -81,6 +81,48 @@ func TestLarkLegacyStatusCodeSuccess(t *testing.T) {
 	}
 }
 
+func TestLarkMissingCodeField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(server.Close)
+
+	client := newLarkClient(server.URL, defaultHTTPClient())
+	err := client.send(context.Background(), buildCardMessage(samplePayload()))
+	var larkErr *larkError
+	if !errors.As(err, &larkErr) {
+		t.Fatalf("error = %T, want *larkError", err)
+	}
+	if larkErr.kind != "schema" {
+		t.Fatalf("kind = %q, want schema", larkErr.kind)
+	}
+	if larkErr.httpStatus != http.StatusOK {
+		t.Fatalf("httpStatus = %d, want 200", larkErr.httpStatus)
+	}
+}
+
+func TestLarkNullCodeField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		_, _ = io.WriteString(w, `{"code":null}`)
+	}))
+	t.Cleanup(server.Close)
+
+	client := newLarkClient(server.URL, defaultHTTPClient())
+	err := client.send(context.Background(), buildCardMessage(samplePayload()))
+	var larkErr *larkError
+	if !errors.As(err, &larkErr) {
+		t.Fatalf("error = %T, want *larkError", err)
+	}
+	if larkErr.kind != "schema" {
+		t.Fatalf("kind = %q, want schema", larkErr.kind)
+	}
+	if larkErr.httpStatus != http.StatusOK {
+		t.Fatalf("httpStatus = %d, want 200", larkErr.httpStatus)
+	}
+}
+
 func TestLarkAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
