@@ -108,6 +108,18 @@ func TestIntegrationSuccess(t *testing.T) {
 	if !cardNoteContainsKeyword(t, received) {
 		t.Fatal("card note must contain the keyword Prometheus告警")
 	}
+	header, ok := card["header"].(map[string]any)
+	if !ok {
+		t.Fatalf("header = %T, want object", card["header"])
+	}
+	title, ok := header["title"].(map[string]any)
+	if !ok {
+		t.Fatalf("title = %T, want object", header["title"])
+	}
+	titleContent, _ := title["content"].(string)
+	if !strings.Contains(titleContent, "Prometheus告警") {
+		t.Fatalf("title = %q, want keyword Prometheus告警", titleContent)
+	}
 	if strings.Contains(logs.String(), testToken) {
 		t.Fatal("logs must not contain the webhook token")
 	}

@@ -37,7 +37,7 @@ Alertmanager --POST /webhook--> prometheus-webhook-feishu --POST--> Lark/飞书�
 
 ## 飞书机器人设置
 
-机器人安全设置使用自定义关键词 `Prometheus告警`。卡片标题、正文和 note 均包含该关键词，不支持签名校验。
+机器人安全设置使用自定义关键词 `Prometheus告警`。卡片标题和 note 包含完整关键词 `Prometheus告警`；正文中的字段名只含「告警」，不含完整关键词。不支持签名校验。
 
 ## 状态码
 
