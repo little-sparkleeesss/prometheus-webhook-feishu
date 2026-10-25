@@ -1,16 +1,16 @@
 package main
 
 import (
-	"bytes"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
-func newIntegrationHandler(t *testing.T, larkURL string, logs *bytes.Buffer) *httptest.Server {
+func newIntegrationHandler(t *testing.T, larkURL string, logs io.Writer) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewJSONHandler(logs, nil))
 	h := newHandler(
@@ -73,15 +73,16 @@ func cardNoteContainsKeyword(t *testing.T, raw []byte) bool {
 }
 
 func TestIntegrationSuccess(t *testing.T) {
-	var received []byte
+	received := make(chan []byte, 1)
 	lark := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		received, _ = io.ReadAll(r.Body)
+		body, _ := io.ReadAll(r.Body)
+		received <- body
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = io.WriteString(w, `{"code":0,"msg":"success"}`)
 	}))
 	t.Cleanup(lark.Close)
 
-	var logs bytes.Buffer
+	var logs syncBuffer
 	adapter := newIntegrationHandler(t, lark.URL, &logs)
 
 	resp := postWebhook(t, adapter.URL, sampleJSON)
@@ -91,26 +92,33 @@ func TestIntegrationSuccess(t *testing.T) {
 		t.Fatalf("status = %d, want 200, body = %s", resp.StatusCode, body)
 	}
 
-	decoded := decodeCardMessage(t, received)
+	var card []byte
+	select {
+	case card = <-received:
+	case <-time.After(5 * time.Second):
+		t.Fatal("lark server did not receive a card")
+	}
+
+	decoded := decodeCardMessage(t, card)
 	if decoded["msg_type"] != "interactive" {
 		t.Fatalf("msg_type = %v, want interactive", decoded["msg_type"])
 	}
-	card, ok := decoded["card"].(map[string]any)
+	cardObject, ok := decoded["card"].(map[string]any)
 	if !ok {
 		t.Fatalf("card = %T, want object", decoded["card"])
 	}
-	if _, exists := card["schema"]; exists {
+	if _, exists := cardObject["schema"]; exists {
 		t.Fatal("card must not contain schema 2.0 field")
 	}
-	if !strings.Contains(string(received), "Prometheus告警") {
+	if !strings.Contains(string(card), "Prometheus告警") {
 		t.Fatal("card must contain the keyword Prometheus告警")
 	}
-	if !cardNoteContainsKeyword(t, received) {
+	if !cardNoteContainsKeyword(t, card) {
 		t.Fatal("card note must contain the keyword Prometheus告警")
 	}
-	header, ok := card["header"].(map[string]any)
+	header, ok := cardObject["header"].(map[string]any)
 	if !ok {
-		t.Fatalf("header = %T, want object", card["header"])
+		t.Fatalf("header = %T, want object", cardObject["header"])
 	}
 	title, ok := header["title"].(map[string]any)
 	if !ok {
@@ -136,7 +144,7 @@ func TestIntegrationLarkKeywordError(t *testing.T) {
 	}))
 	t.Cleanup(lark.Close)
 
-	var logs bytes.Buffer
+	var logs syncBuffer
 	adapter := newIntegrationHandler(t, lark.URL, &logs)
 
 	resp := postWebhook(t, adapter.URL, sampleJSON)
@@ -166,7 +174,7 @@ func TestIntegrationLarkKeywordError(t *testing.T) {
 }
 
 func TestIntegrationHealthz(t *testing.T) {
-	var logs bytes.Buffer
+	var logs syncBuffer
 	adapter := newIntegrationHandler(t, unusedLarkURL, &logs)
 
 	resp, err := http.Get(adapter.URL + "/healthz")

@@ -23,13 +23,14 @@ func decodeCardMessage(t *testing.T, body []byte) map[string]any {
 }
 
 func TestLarkSendSuccess(t *testing.T) {
-	var (
-		receivedContentType string
-		receivedBody        []byte
-	)
+	type capture struct {
+		contentType string
+		body        []byte
+	}
+	received := make(chan capture, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedContentType = r.Header.Get("Content-Type")
-		receivedBody, _ = io.ReadAll(r.Body)
+		body, _ := io.ReadAll(r.Body)
+		received <- capture{contentType: r.Header.Get("Content-Type"), body: body}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = io.WriteString(w, `{"code":0,"msg":"success"}`)
 	}))
@@ -39,11 +40,18 @@ func TestLarkSendSuccess(t *testing.T) {
 	if err := client.send(context.Background(), buildCardMessage(samplePayload())); err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if receivedContentType != "application/json; charset=utf-8" {
-		t.Fatalf("Content-Type = %q", receivedContentType)
+
+	var got capture
+	select {
+	case got = <-received:
+	case <-time.After(5 * time.Second):
+		t.Fatal("lark server did not receive a request")
+	}
+	if got.contentType != "application/json; charset=utf-8" {
+		t.Fatalf("Content-Type = %q", got.contentType)
 	}
 
-	decoded := decodeCardMessage(t, receivedBody)
+	decoded := decodeCardMessage(t, got.body)
 	if decoded["msg_type"] != "interactive" {
 		t.Fatalf("msg_type = %v, want interactive", decoded["msg_type"])
 	}
