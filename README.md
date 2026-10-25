@@ -25,7 +25,7 @@ Alertmanager --POST /webhook--> prometheus-webhook-feishu --POST--> Lark/飞书�
 
 ### `GET /healthz`
 
-只检查 `FEISHU_WEBHOOK_URL` 已设置且 host 合法，不访问网络。
+校验 `FEISHU_WEBHOOK_URL` 的完整合法性（https、允许的 host、路径前缀、无端口和用户信息），不访问网络。
 
 ## 环境变量
 
@@ -74,6 +74,15 @@ podman run --rm -p 5000:5000 \
   -e WEBHOOK_TOKEN='change-me' \
   prometheus-webhook-feishu
 ```
+
+## 镜像
+
+镜像发布到 GHCR：`ghcr.io/little-sparkleeesss/prometheus-webhook-feishu`。
+
+- tag push：`:sha-<short-sha>` 和 `:release-<tag>`。
+- 手动 dispatch（`main`）：`:sha-<short-sha>` 和 `:main`。
+
+构建摘要会输出 `image digest: sha256:...`。部署时使用该 digest（`image: ghcr.io/little-sparkleeesss/prometheus-webhook-feishu@sha256:<digest>`），不要长期使用浮动 tag。
 
 ## 许可证
 
