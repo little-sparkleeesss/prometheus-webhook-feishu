@@ -291,6 +291,29 @@ func TestHandlerRedactsLarkMessage(t *testing.T) {
 	}
 }
 
+func TestHandlerKeepsCleanLarkMessage(t *testing.T) {
+	lark := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_, _ = io.WriteString(w, `{"code":19024,"msg":"rate limited"}`)
+	}))
+	t.Cleanup(lark.Close)
+
+	var logs bytes.Buffer
+	h := newHandler(
+		config{webhookURL: validWebhookURL, token: testToken, port: "5000"},
+		newLarkClient(lark.URL, defaultHTTPClient()),
+		slog.New(slog.NewJSONHandler(&logs, nil)),
+	)
+	recorder := doRequest(t, h, http.MethodPost, "/webhook", sampleJSON, "Bearer "+testToken)
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", recorder.Code)
+	}
+	if !strings.Contains(logs.String(), "rate limited") {
+		t.Fatalf("log must keep a message without secrets: %s", logs.String())
+	}
+}
+
 func TestHandlerHealthz(t *testing.T) {
 	h := newTestHandler(t, "", unusedLarkURL)
 

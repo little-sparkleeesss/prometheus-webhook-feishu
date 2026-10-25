@@ -171,26 +171,16 @@ func secureEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare(left[:], right[:]) == 1
 }
 
-// redactLarkMessage removes local secrets that an upstream error message may
-// echo before the message is written to logs.
+// redactLarkMessage drops an upstream error message entirely when it contains
+// a local secret, avoiding partial replacement that could mangle diagnostics
+// when a short token or key is a common substring.
 func (h *handler) redactLarkMessage(msg string) string {
-	secrets := []string{h.cfg.webhookURL, h.cfg.token, webhookKey(h.cfg.webhookURL)}
-	seen := make(map[string]struct{}, len(secrets))
-	pairs := make([]string, 0, len(secrets)*2)
-	for _, secret := range secrets {
-		if secret == "" {
-			continue
+	for _, secret := range []string{h.cfg.webhookURL, h.cfg.token, webhookKey(h.cfg.webhookURL)} {
+		if secret != "" && strings.Contains(msg, secret) {
+			return "[redacted]"
 		}
-		if _, ok := seen[secret]; ok {
-			continue
-		}
-		seen[secret] = struct{}{}
-		pairs = append(pairs, secret, "[redacted]")
 	}
-	if len(pairs) == 0 {
-		return msg
-	}
-	return strings.NewReplacer(pairs...).Replace(msg)
+	return msg
 }
 
 func logCluster(p alertmanagerPayload) string {
