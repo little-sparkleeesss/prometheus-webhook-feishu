@@ -268,6 +268,15 @@ func TestBuildCardMessageSizeLimit(t *testing.T) {
 	if !hasNoteContaining(msg, "条未展示") {
 		t.Fatal("oversized card must report omitted alerts")
 	}
+	rendered := 0
+	for _, element := range msg.Card.Elements {
+		if _, ok := element.(divFieldsElement); ok {
+			rendered++
+		}
+	}
+	if rendered == 0 {
+		t.Fatal("oversized card must still render at least one alert")
+	}
 }
 
 func TestBuildCardMessageOmittedAlerts(t *testing.T) {
