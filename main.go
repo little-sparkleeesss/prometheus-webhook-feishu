@@ -18,6 +18,9 @@ const (
 	defaultPort    = "5000"
 	listenAddr     = "0.0.0.0"
 	hookPathPrefix = "/open-apis/bot/v2/hook/"
+	// shutdownTimeout leaves margin beyond the worst-case in-flight request:
+	// body read timeout plus the Lark call timeout.
+	shutdownTimeout = requestReadTimeout + larkRequestTimeout + 5*time.Second
 )
 
 type config struct {
@@ -132,7 +135,7 @@ func main() {
 		}
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "event", "shutdown_failed", "error", err.Error())
