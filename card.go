@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -250,6 +251,9 @@ func newField(label, value string) field {
 func omittedCount(p alertmanagerPayload, shown int) int {
 	omitted := len(p.Alerts) - shown
 	if p.TruncatedAlerts > 0 {
+		if omitted > math.MaxInt-p.TruncatedAlerts {
+			return math.MaxInt
+		}
 		omitted += p.TruncatedAlerts
 	}
 	if omitted < 0 {

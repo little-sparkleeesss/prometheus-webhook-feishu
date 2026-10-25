@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -339,6 +340,20 @@ func TestPayloadAlertsArraySemantics(t *testing.T) {
 	var wrongType alertmanagerPayload
 	if err := json.Unmarshal([]byte(`{"status":"firing","alerts":{}}`), &wrongType); err == nil {
 		t.Fatal("object alerts must be rejected")
+	}
+}
+
+func TestOmittedCountSaturates(t *testing.T) {
+	payload := samplePayload()
+	payload.Alerts = make([]alert, 12)
+	payload.TruncatedAlerts = math.MaxInt
+
+	if got := omittedCount(payload, 10); got != math.MaxInt {
+		t.Fatalf("omittedCount = %d, want %d", got, math.MaxInt)
+	}
+	msg := buildCardMessage(payload)
+	if !hasNoteContaining(msg, "条未展示") {
+		t.Fatalf("notes = %v, want an omission note", noteContents(msg))
 	}
 }
 
