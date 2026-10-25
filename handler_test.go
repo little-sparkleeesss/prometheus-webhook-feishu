@@ -243,6 +243,43 @@ func TestHandlerLogsBoundedStatus(t *testing.T) {
 	}
 }
 
+func TestHandlerRedactsLarkMessage(t *testing.T) {
+	key := webhookKey(validWebhookURL)
+	if key == "" {
+		t.Fatal("test webhook URL has no key")
+	}
+	leaked := validWebhookURL + " token=" + testToken + " key=" + key
+
+	lark := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		response, _ := json.Marshal(map[string]any{"code": 19024, "msg": leaked})
+		_, _ = w.Write(response)
+	}))
+	t.Cleanup(lark.Close)
+
+	var logs bytes.Buffer
+	h := newHandler(
+		config{webhookURL: validWebhookURL, token: testToken, port: "5000"},
+		newLarkClient(lark.URL, defaultHTTPClient()),
+		slog.New(slog.NewJSONHandler(&logs, nil)),
+	)
+	recorder := doRequest(t, h, http.MethodPost, "/webhook", sampleJSON, "Bearer "+testToken)
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", recorder.Code)
+	}
+
+	logged := logs.String()
+	for _, secret := range []string{validWebhookURL, testToken, key} {
+		if strings.Contains(logged, secret) {
+			t.Fatalf("log must not contain %q: %s", secret, logged)
+		}
+	}
+	if !strings.Contains(logged, "[redacted]") {
+		t.Fatalf("log must contain the redaction marker: %s", logged)
+	}
+}
+
 func TestHandlerHealthz(t *testing.T) {
 	h := newTestHandler(t, "", unusedLarkURL)
 

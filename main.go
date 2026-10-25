@@ -31,6 +31,20 @@ var allowedWebhookHosts = map[string]struct{}{
 	"open.larksuite.com": {},
 }
 
+// webhookKey returns the secret portion of a Lark bot webhook URL, or an
+// empty string when the URL does not contain one.
+func webhookKey(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	key := strings.TrimPrefix(parsed.Path, hookPathPrefix)
+	if key == parsed.Path {
+		return ""
+	}
+	return key
+}
+
 func validateWebhookURL(raw string) error {
 	if raw == "" {
 		return errors.New("FEISHU_WEBHOOK_URL is required")

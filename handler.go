@@ -121,7 +121,7 @@ func (h *handler) handleWebhook(w http.ResponseWriter, r *http.Request) {
 				"error_kind", larkErr.kind,
 			)
 			if larkErr.msg != "" {
-				attrs = append(attrs, "lark_msg", truncateRunes(larkErr.msg, maxLarkMessageLogSize))
+				attrs = append(attrs, "lark_msg", truncateRunes(h.redactLarkMessage(larkErr.msg), maxLarkMessageLogSize))
 			}
 		}
 		h.logger.Error("failed to forward alert", attrs...)
@@ -169,6 +169,28 @@ func secureEqual(a, b string) bool {
 	left := sha256.Sum256([]byte(a))
 	right := sha256.Sum256([]byte(b))
 	return subtle.ConstantTimeCompare(left[:], right[:]) == 1
+}
+
+// redactLarkMessage removes local secrets that an upstream error message may
+// echo before the message is written to logs.
+func (h *handler) redactLarkMessage(msg string) string {
+	secrets := []string{h.cfg.webhookURL, h.cfg.token, webhookKey(h.cfg.webhookURL)}
+	seen := make(map[string]struct{}, len(secrets))
+	pairs := make([]string, 0, len(secrets)*2)
+	for _, secret := range secrets {
+		if secret == "" {
+			continue
+		}
+		if _, ok := seen[secret]; ok {
+			continue
+		}
+		seen[secret] = struct{}{}
+		pairs = append(pairs, secret, "[redacted]")
+	}
+	if len(pairs) == 0 {
+		return msg
+	}
+	return strings.NewReplacer(pairs...).Replace(msg)
 }
 
 func logCluster(p alertmanagerPayload) string {
