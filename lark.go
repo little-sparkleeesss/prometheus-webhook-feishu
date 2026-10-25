@@ -52,11 +52,14 @@ func (r larkResponse) message() string {
 }
 
 func (r larkResponse) primaryCode() int {
-	if r.Code != nil {
+	if r.Code != nil && *r.Code != 0 {
 		return *r.Code
 	}
 	if r.StatusCode != nil {
 		return *r.StatusCode
+	}
+	if r.Code != nil {
+		return *r.Code
 	}
 	return 0
 }

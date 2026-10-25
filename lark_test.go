@@ -205,6 +205,28 @@ func TestLarkHTTPError(t *testing.T) {
 	}
 }
 
+func TestLarkHTTPErrorUsesStatusCodeFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, `{"code":0,"StatusCode":19024,"StatusMessage":"rate limited"}`)
+	}))
+	t.Cleanup(server.Close)
+
+	client := newLarkClient(server.URL, defaultHTTPClient())
+	err := client.send(context.Background(), buildCardMessage(samplePayload()))
+	var larkErr *larkError
+	if !errors.As(err, &larkErr) {
+		t.Fatalf("error = %T, want *larkError", err)
+	}
+	if larkErr.kind != "http_status" || larkErr.code != 19024 {
+		t.Fatalf("error = %+v, want http_status code 19024", larkErr)
+	}
+	if larkErr.msg != "rate limited" {
+		t.Fatalf("msg = %q, want rate limited", larkErr.msg)
+	}
+}
+
 func TestLarkDoesNotFollowRedirects(t *testing.T) {
 	var followed atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
