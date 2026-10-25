@@ -27,7 +27,7 @@ jobs:
       - name: Check formatting
         run: test -z "$(gofmt -l .)"
       - name: Test
-        run: go test ./...
+        run: go test -race ./...
 
   build:
     needs: test
