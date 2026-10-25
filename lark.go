@@ -90,13 +90,16 @@ func (c *larkClient) send(ctx context.Context, msg *cardMessage) error {
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxLarkResponseBytes))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxLarkResponseBytes+1))
 	if err != nil {
 		kind := "read_response"
 		if classified := classifyNetworkError(ctx, err); classified != "network" {
 			kind = classified
 		}
 		return &larkError{kind: kind, httpStatus: resp.StatusCode}
+	}
+	if len(respBody) > maxLarkResponseBytes {
+		return &larkError{kind: "response_too_large", httpStatus: resp.StatusCode}
 	}
 
 	var parsed larkResponse

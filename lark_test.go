@@ -253,6 +253,47 @@ func TestLarkBodyReadTimeout(t *testing.T) {
 	}
 }
 
+func TestLarkResponseTooLarge(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_, _ = io.WriteString(w, `{"msg":"`)
+		_, _ = io.WriteString(w, strings.Repeat("a", maxLarkResponseBytes))
+		_, _ = io.WriteString(w, `"}`)
+	}))
+	t.Cleanup(server.Close)
+
+	client := newLarkClient(server.URL, defaultHTTPClient())
+	err := client.send(context.Background(), buildCardMessage(samplePayload()))
+	var larkErr *larkError
+	if !errors.As(err, &larkErr) {
+		t.Fatalf("error = %T, want *larkError", err)
+	}
+	if larkErr.kind != "response_too_large" {
+		t.Fatalf("kind = %q, want response_too_large", larkErr.kind)
+	}
+}
+
+func TestLarkResponseAtLimitAccepted(t *testing.T) {
+	const overhead = len(`{"code":0,"msg":""}`)
+	body := `{"code":0,"msg":"` + strings.Repeat("a", maxLarkResponseBytes-overhead) + `"}`
+	if len(body) != maxLarkResponseBytes {
+		t.Fatalf("test body size = %d, want %d", len(body), maxLarkResponseBytes)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(server.Close)
+
+	client := newLarkClient(server.URL, defaultHTTPClient())
+	if err := client.send(context.Background(), buildCardMessage(samplePayload())); err != nil {
+		t.Fatalf("send at response limit: %v", err)
+	}
+}
+
 func TestLarkTimeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
