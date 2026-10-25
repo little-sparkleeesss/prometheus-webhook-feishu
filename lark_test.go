@@ -228,6 +228,31 @@ func TestLarkDoesNotFollowRedirects(t *testing.T) {
 	}
 }
 
+func TestLarkBodyReadTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"code":`)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		time.Sleep(200 * time.Millisecond)
+		_, _ = io.WriteString(w, `0}`)
+	}))
+	t.Cleanup(server.Close)
+
+	client := newLarkClient(server.URL, &http.Client{Timeout: 50 * time.Millisecond})
+	err := client.send(context.Background(), buildCardMessage(samplePayload()))
+	var larkErr *larkError
+	if !errors.As(err, &larkErr) {
+		t.Fatalf("error = %T, want *larkError", err)
+	}
+	if larkErr.kind != "timeout" {
+		t.Fatalf("kind = %q, want timeout", larkErr.kind)
+	}
+}
+
 func TestLarkTimeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)

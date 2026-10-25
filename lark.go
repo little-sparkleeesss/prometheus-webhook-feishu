@@ -92,7 +92,11 @@ func (c *larkClient) send(ctx context.Context, msg *cardMessage) error {
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxLarkResponseBytes))
 	if err != nil {
-		return &larkError{kind: "read_response", httpStatus: resp.StatusCode}
+		kind := "read_response"
+		if classified := classifyNetworkError(ctx, err); classified != "network" {
+			kind = classified
+		}
+		return &larkError{kind: kind, httpStatus: resp.StatusCode}
 	}
 
 	var parsed larkResponse
