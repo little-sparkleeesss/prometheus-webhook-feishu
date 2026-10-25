@@ -307,11 +307,26 @@ func TestBuildCardMessageTruncatedAlerts(t *testing.T) {
 	}
 }
 
-func TestPayloadRejectsTooManyAlerts(t *testing.T) {
-	body := `{"status":"firing","alerts":[` + strings.Repeat(`{},`, maxAcceptedAlerts) + `{}]}`
+func TestPayloadCountsAlertsBeyondCap(t *testing.T) {
+	const extra = 101
+	body := `{"status":"firing","alerts":[` + strings.Repeat(`{},`, maxAcceptedAlerts+extra-1) + `{}]}`
 	var payload alertmanagerPayload
-	if err := json.Unmarshal([]byte(body), &payload); err == nil {
-		t.Fatalf("unmarshal accepted more than %d alerts, want error", maxAcceptedAlerts)
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(payload.Alerts) != maxAcceptedAlerts {
+		t.Fatalf("retained alerts = %d, want %d", len(payload.Alerts), maxAcceptedAlerts)
+	}
+	wantTotal := maxAcceptedAlerts + extra
+	if got := payload.totalAlerts(); got != wantTotal {
+		t.Fatalf("total alerts = %d, want %d", got, wantTotal)
+	}
+	if got := omittedCount(payload, maxRenderedAlerts); got != wantTotal-maxRenderedAlerts {
+		t.Fatalf("omitted = %d, want %d", got, wantTotal-maxRenderedAlerts)
+	}
+	msg := buildCardMessage(payload)
+	if !hasNoteContaining(msg, "条未展示") {
+		t.Fatalf("notes = %v, want an omission note", noteContents(msg))
 	}
 }
 
@@ -323,6 +338,9 @@ func TestPayloadAcceptsMaxAlerts(t *testing.T) {
 	}
 	if len(payload.Alerts) != maxAcceptedAlerts {
 		t.Fatalf("alerts = %d, want %d", len(payload.Alerts), maxAcceptedAlerts)
+	}
+	if got := payload.totalAlerts(); got != maxAcceptedAlerts {
+		t.Fatalf("total alerts = %d, want %d", got, maxAcceptedAlerts)
 	}
 }
 

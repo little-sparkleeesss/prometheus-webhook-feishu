@@ -31,6 +31,11 @@ type alertmanagerPayload struct {
 	TruncatedAlerts   int               `json:"truncatedAlerts"`
 	CommonLabels      map[string]string `json:"commonLabels"`
 	CommonAnnotations map[string]string `json:"commonAnnotations"`
+	droppedAlerts     int
+}
+
+func (p alertmanagerPayload) totalAlerts() int {
+	return len(p.Alerts) + p.droppedAlerts
 }
 
 type alert struct {
@@ -53,14 +58,18 @@ func (p *alertmanagerPayload) validate() error {
 	return nil
 }
 
-// limitedAlerts caps the decoded slice during unmarshalling. A 1 MiB body of
-// tiny alert objects would otherwise expand into a much larger in-memory slice
-// even though the card renders at most maxRenderedAlerts alerts.
-type limitedAlerts []alert
+// limitedAlerts retains at most maxAcceptedAlerts alert structs during
+// unmarshalling while counting every element. A 1 MiB body of tiny alert
+// objects would otherwise expand into a much larger in-memory slice even
+// though the card renders at most maxRenderedAlerts alerts.
+type limitedAlerts struct {
+	items []alert
+	total int
+}
 
 func (a *limitedAlerts) UnmarshalJSON(data []byte) error {
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		*a = nil
+		*a = limitedAlerts{}
 		return nil
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -71,21 +80,21 @@ func (a *limitedAlerts) UnmarshalJSON(data []byte) error {
 	if delim, ok := token.(json.Delim); !ok || delim != '[' {
 		return errors.New("alerts must be an array")
 	}
-	alerts := make(limitedAlerts, 0, 16)
+	items := make([]alert, 0, 16)
 	for decoder.More() {
-		if len(alerts) >= maxAcceptedAlerts {
-			return fmt.Errorf("alerts exceeds %d", maxAcceptedAlerts)
-		}
 		var item alert
 		if err := decoder.Decode(&item); err != nil {
 			return err
 		}
-		alerts = append(alerts, item)
+		a.total++
+		if len(items) < maxAcceptedAlerts {
+			items = append(items, item)
+		}
 	}
 	if _, err := decoder.Token(); err != nil {
 		return err
 	}
-	*a = alerts
+	a.items = items
 	return nil
 }
 
@@ -107,9 +116,11 @@ func (p *alertmanagerPayload) UnmarshalJSON(data []byte) error {
 	p.CommonLabels = raw.CommonLabels
 	p.CommonAnnotations = raw.CommonAnnotations
 	if raw.Alerts != nil {
-		p.Alerts = []alert(*raw.Alerts)
+		p.Alerts = raw.Alerts.items
+		p.droppedAlerts = raw.Alerts.total - len(raw.Alerts.items)
 	} else {
 		p.Alerts = nil
+		p.droppedAlerts = 0
 	}
 	return nil
 }
@@ -249,7 +260,7 @@ func newField(label, value string) field {
 }
 
 func omittedCount(p alertmanagerPayload, shown int) int {
-	omitted := len(p.Alerts) - shown
+	omitted := p.totalAlerts() - shown
 	if p.TruncatedAlerts > 0 {
 		if omitted > math.MaxInt-p.TruncatedAlerts {
 			return math.MaxInt

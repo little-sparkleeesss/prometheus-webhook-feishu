@@ -107,7 +107,7 @@ func (h *handler) handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	attrs := []any{
 		"event", "webhook_processed",
-		"alerts", len(payload.Alerts),
+		"alerts", payload.totalAlerts(),
 		"status", truncateRunes(payload.Status, maxStatusLogRunes),
 		"cluster", logCluster(payload),
 		"duration_ms", elapsed.Milliseconds(),

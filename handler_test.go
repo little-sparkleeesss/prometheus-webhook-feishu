@@ -184,6 +184,17 @@ func TestHandlerSuccessResponse(t *testing.T) {
 	}
 }
 
+func TestHandlerAcceptsLargeAlertBatch(t *testing.T) {
+	lark := newLarkOKServer(t)
+	h := newTestHandler(t, testToken, lark.URL)
+	body := `{"status":"firing","alerts":[` + strings.Repeat(`{},`, maxAcceptedAlerts) + `{}]}`
+	recorder := doRequest(t, h, http.MethodPost, "/webhook", body, "Bearer "+testToken)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestHandlerLarkFailure(t *testing.T) {
 	lark := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
