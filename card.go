@@ -291,7 +291,30 @@ func renderValue(raw string, limit int) string {
 		return "-"
 	}
 	escaped := escapeLarkMD(truncateRunes(value, limit))
-	return truncateRunes(escaped, limit)
+	return truncateEscaped(escaped, limit)
+}
+
+// truncateEscaped truncates an escaped lark_md value without leaving an
+// unterminated backslash escape. A trailing run of backslashes is complete
+// when its length is even (each pair escapes a literal backslash); when odd,
+// the final backslash starts an escape whose target was cut off.
+func truncateEscaped(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	runes = runes[:limit]
+	trailing := 0
+	for i := len(runes) - 1; i >= 0 && runes[i] == '\\'; i-- {
+		trailing++
+	}
+	if trailing%2 == 1 {
+		runes = runes[:len(runes)-1]
+	}
+	return string(runes)
 }
 
 func startsAtValue(p alertmanagerPayload) string {
@@ -334,10 +357,5 @@ func truncateRunes(value string, limit int) string {
 	if utf8.RuneCountInString(value) <= limit {
 		return value
 	}
-	runes := []rune(value)[:limit]
-	// Do not leave a dangling escape character after truncation.
-	if runes[len(runes)-1] == '\\' {
-		runes = runes[:len(runes)-1]
-	}
-	return string(runes)
+	return string([]rune(value)[:limit])
 }

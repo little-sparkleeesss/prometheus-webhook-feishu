@@ -196,12 +196,46 @@ func TestRenderValueTruncatesByRune(t *testing.T) {
 	}
 
 	escaped := renderValue(strings.Repeat("*", 600), maxFieldRunes)
-	if count := utf8.RuneCountInString(escaped); count > maxFieldRunes {
-		t.Fatalf("escaped field rune count = %d, want <= %d", count, maxFieldRunes)
+	if count := utf8.RuneCountInString(escaped); count != maxFieldRunes {
+		t.Fatalf("escaped field rune count = %d, want %d", count, maxFieldRunes)
 	}
-	if strings.HasSuffix(escaped, "\\") {
-		t.Fatal("escaped field must not end with a dangling backslash")
+	if count := trailingBackslashes(escaped); count%2 != 0 {
+		t.Fatalf("escaped field ends with %d trailing backslashes, want an even count", count)
 	}
+
+	// A cut after a complete escaped-backslash pair must keep both runes.
+	mixed := renderValue(strings.Repeat("a", 510)+"\\"+"a", maxFieldRunes)
+	if count := utf8.RuneCountInString(mixed); count != maxFieldRunes {
+		t.Fatalf("mixed field rune count = %d, want %d", count, maxFieldRunes)
+	}
+	if count := trailingBackslashes(mixed); count%2 != 0 {
+		t.Fatalf("mixed field ends with %d trailing backslashes, want an even count", count)
+	}
+
+	backslashed := renderValue(strings.Repeat("\\", 300), maxFieldRunes)
+	if count := utf8.RuneCountInString(backslashed); count != maxFieldRunes {
+		t.Fatalf("backslash field rune count = %d, want %d", count, maxFieldRunes)
+	}
+	if count := trailingBackslashes(backslashed); count%2 != 0 {
+		t.Fatalf("backslash field ends with %d trailing backslashes, want an even count", count)
+	}
+
+	// A cut inside an escape sequence drops the leading backslash.
+	cutEscape := renderValue(strings.Repeat("a", 511)+"*", maxFieldRunes)
+	if count := utf8.RuneCountInString(cutEscape); count != maxFieldRunes-1 {
+		t.Fatalf("cut escape rune count = %d, want %d", count, maxFieldRunes-1)
+	}
+	if count := trailingBackslashes(cutEscape); count%2 != 0 {
+		t.Fatalf("cut escape ends with %d trailing backslashes, want an even count", count)
+	}
+}
+
+func trailingBackslashes(value string) int {
+	count := 0
+	for i := len(value) - 1; i >= 0 && value[i] == '\\'; i-- {
+		count++
+	}
+	return count
 }
 
 func TestBuildCardMessageSizeLimit(t *testing.T) {
