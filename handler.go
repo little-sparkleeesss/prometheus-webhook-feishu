@@ -152,7 +152,7 @@ func (h *handler) reject(w http.ResponseWriter, status int, message, reason stri
 
 func (h *handler) authorized(r *http.Request) bool {
 	if h.cfg.token == "" {
-		return true
+		return false
 	}
 	header := r.Header.Get("Authorization")
 	if !strings.HasPrefix(header, authorizationScheme) {

@@ -88,11 +88,12 @@ func TestHandlerBodyTooLarge(t *testing.T) {
 }
 
 func TestHandlerBodyTooLargeWithoutContentLength(t *testing.T) {
-	h := newTestHandler(t, "", unusedLarkURL)
+	h := newTestHandler(t, testToken, unusedLarkURL)
 	body := strings.Repeat("a", maxBodyBytes+1)
 	req := httptest.NewRequest(http.MethodPost, "/webhook", nil)
 	req.Body = io.NopCloser(bytes.NewReader([]byte(body)))
 	req.ContentLength = 10
+	req.Header.Set("Authorization", "Bearer "+testToken)
 	recorder := httptest.NewRecorder()
 	h.ServeHTTP(recorder, req)
 
@@ -126,7 +127,7 @@ func TestHandlerBearerToken(t *testing.T) {
 }
 
 func TestHandlerInvalidPayloads(t *testing.T) {
-	h := newTestHandler(t, "", unusedLarkURL)
+	h := newTestHandler(t, testToken, unusedLarkURL)
 	cases := map[string]string{
 		"invalid json":         `not json`,
 		"missing alerts":       `{"status":"firing"}`,
@@ -137,7 +138,7 @@ func TestHandlerInvalidPayloads(t *testing.T) {
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
-			recorder := doRequest(t, h, http.MethodPost, "/webhook", body, "")
+			recorder := doRequest(t, h, http.MethodPost, "/webhook", body, "Bearer "+testToken)
 			if recorder.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400", recorder.Code)
 			}
@@ -147,7 +148,7 @@ func TestHandlerInvalidPayloads(t *testing.T) {
 
 func TestHandlerConcurrencyLimit(t *testing.T) {
 	lark := newLarkOKServer(t)
-	h := newTestHandler(t, "", lark.URL)
+	h := newTestHandler(t, testToken, lark.URL)
 	for i := 0; i < maxConcurrentRequests; i++ {
 		h.sem <- struct{}{}
 	}
@@ -157,7 +158,7 @@ func TestHandlerConcurrencyLimit(t *testing.T) {
 		}
 	}()
 
-	recorder := doRequest(t, h, http.MethodPost, "/webhook", sampleJSON, "")
+	recorder := doRequest(t, h, http.MethodPost, "/webhook", sampleJSON, "Bearer "+testToken)
 
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", recorder.Code)
@@ -166,9 +167,9 @@ func TestHandlerConcurrencyLimit(t *testing.T) {
 
 func TestHandlerSuccessResponse(t *testing.T) {
 	lark := newLarkOKServer(t)
-	h := newTestHandler(t, "", lark.URL)
+	h := newTestHandler(t, testToken, lark.URL)
 
-	recorder := doRequest(t, h, http.MethodPost, "/webhook", sampleJSON, "")
+	recorder := doRequest(t, h, http.MethodPost, "/webhook", sampleJSON, "Bearer "+testToken)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
@@ -189,15 +190,26 @@ func TestHandlerLarkFailure(t *testing.T) {
 		_, _ = io.WriteString(w, `{"code":19024,"msg":"Key Words Not Found"}`)
 	}))
 	t.Cleanup(lark.Close)
-	h := newTestHandler(t, "", lark.URL)
+	h := newTestHandler(t, testToken, lark.URL)
 
-	recorder := doRequest(t, h, http.MethodPost, "/webhook", sampleJSON, "")
+	recorder := doRequest(t, h, http.MethodPost, "/webhook", sampleJSON, "Bearer "+testToken)
 
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", recorder.Code)
 	}
 	if strings.Contains(recorder.Body.String(), lark.URL) {
 		t.Fatal("response must not contain the Lark URL")
+	}
+}
+
+func TestHandlerEmptyTokenDeniesRequests(t *testing.T) {
+	h := newTestHandler(t, "", unusedLarkURL)
+
+	for _, authorization := range []string{"", "Bearer anything"} {
+		recorder := doRequest(t, h, http.MethodPost, "/webhook", sampleJSON, authorization)
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("status with authorization %q = %d, want 401", authorization, recorder.Code)
+		}
 	}
 }
 
