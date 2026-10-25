@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 const (
@@ -210,6 +211,35 @@ func TestHandlerEmptyTokenDeniesRequests(t *testing.T) {
 		if recorder.Code != http.StatusUnauthorized {
 			t.Fatalf("status with authorization %q = %d, want 401", authorization, recorder.Code)
 		}
+	}
+}
+
+func TestHandlerLogsBoundedStatus(t *testing.T) {
+	lark := newLarkOKServer(t)
+	var logs bytes.Buffer
+	h := newHandler(
+		config{webhookURL: validWebhookURL, token: testToken, port: "5000"},
+		newLarkClient(lark.URL, defaultHTTPClient()),
+		slog.New(slog.NewJSONHandler(&logs, nil)),
+	)
+
+	longStatus := strings.Repeat("s", 1000)
+	body := `{"status":"` + longStatus + `","alerts":[]}`
+	recorder := doRequest(t, h, http.MethodPost, "/webhook", body, "Bearer "+testToken)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+
+	var entry map[string]any
+	if err := json.Unmarshal(logs.Bytes(), &entry); err != nil {
+		t.Fatalf("decode log entry: %v", err)
+	}
+	logged, _ := entry["status"].(string)
+	if count := utf8.RuneCountInString(logged); count != maxStatusLogRunes {
+		t.Fatalf("logged status rune count = %d, want %d", count, maxStatusLogRunes)
+	}
+	if strings.Contains(logs.String(), longStatus) {
+		t.Fatal("log must not contain the full status value")
 	}
 }
 

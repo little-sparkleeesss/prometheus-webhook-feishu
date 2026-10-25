@@ -17,6 +17,7 @@ const (
 	maxConcurrentRequests = 10
 	requestReadTimeout    = 10 * time.Second
 	maxClusterLogRunes    = 128
+	maxStatusLogRunes     = 64
 	authorizationScheme   = "Bearer "
 	webhookPath           = "/webhook"
 	healthPath            = "/healthz"
@@ -107,7 +108,7 @@ func (h *handler) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	attrs := []any{
 		"event", "webhook_processed",
 		"alerts", len(payload.Alerts),
-		"status", payload.Status,
+		"status", truncateRunes(payload.Status, maxStatusLogRunes),
 		"cluster", logCluster(payload),
 		"duration_ms", elapsed.Milliseconds(),
 	}
