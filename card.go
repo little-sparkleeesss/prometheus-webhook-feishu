@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 
 const (
 	maxRenderedAlerts = 10
+	maxAcceptedAlerts = 10000
 	maxFieldRunes     = 512
 	maxDetailRunes    = 1000
 	maxCardBytes      = 18 * 1024
@@ -46,6 +48,67 @@ func (p *alertmanagerPayload) validate() error {
 	}
 	if p.Alerts == nil {
 		return errors.New("alerts is required")
+	}
+	return nil
+}
+
+// limitedAlerts caps the decoded slice during unmarshalling. A 1 MiB body of
+// tiny alert objects would otherwise expand into a much larger in-memory slice
+// even though the card renders at most maxRenderedAlerts alerts.
+type limitedAlerts []alert
+
+func (a *limitedAlerts) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		*a = nil
+		return nil
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if delim, ok := token.(json.Delim); !ok || delim != '[' {
+		return errors.New("alerts must be an array")
+	}
+	alerts := make(limitedAlerts, 0, 16)
+	for decoder.More() {
+		if len(alerts) >= maxAcceptedAlerts {
+			return fmt.Errorf("alerts exceeds %d", maxAcceptedAlerts)
+		}
+		var item alert
+		if err := decoder.Decode(&item); err != nil {
+			return err
+		}
+		alerts = append(alerts, item)
+	}
+	if _, err := decoder.Token(); err != nil {
+		return err
+	}
+	*a = alerts
+	return nil
+}
+
+// UnmarshalJSON keeps the alerts field on the bounded decoder path while
+// otherwise matching the default struct decoding behavior.
+func (p *alertmanagerPayload) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Status            string            `json:"status"`
+		Alerts            *limitedAlerts    `json:"alerts"`
+		TruncatedAlerts   int               `json:"truncatedAlerts"`
+		CommonLabels      map[string]string `json:"commonLabels"`
+		CommonAnnotations map[string]string `json:"commonAnnotations"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	p.Status = raw.Status
+	p.TruncatedAlerts = raw.TruncatedAlerts
+	p.CommonLabels = raw.CommonLabels
+	p.CommonAnnotations = raw.CommonAnnotations
+	if raw.Alerts != nil {
+		p.Alerts = []alert(*raw.Alerts)
+	} else {
+		p.Alerts = nil
 	}
 	return nil
 }

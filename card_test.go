@@ -263,6 +263,51 @@ func TestBuildCardMessageTruncatedAlerts(t *testing.T) {
 	}
 }
 
+func TestPayloadRejectsTooManyAlerts(t *testing.T) {
+	body := `{"status":"firing","alerts":[` + strings.Repeat(`{},`, maxAcceptedAlerts) + `{}]}`
+	var payload alertmanagerPayload
+	if err := json.Unmarshal([]byte(body), &payload); err == nil {
+		t.Fatalf("unmarshal accepted more than %d alerts, want error", maxAcceptedAlerts)
+	}
+}
+
+func TestPayloadAcceptsMaxAlerts(t *testing.T) {
+	body := `{"status":"firing","alerts":[` + strings.Repeat(`{},`, maxAcceptedAlerts-1) + `{}]}`
+	var payload alertmanagerPayload
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		t.Fatalf("unmarshal %d alerts: %v", maxAcceptedAlerts, err)
+	}
+	if len(payload.Alerts) != maxAcceptedAlerts {
+		t.Fatalf("alerts = %d, want %d", len(payload.Alerts), maxAcceptedAlerts)
+	}
+}
+
+func TestPayloadAlertsArraySemantics(t *testing.T) {
+	var empty alertmanagerPayload
+	if err := json.Unmarshal([]byte(`{"status":"firing","alerts":[]}`), &empty); err != nil {
+		t.Fatalf("unmarshal empty alerts: %v", err)
+	}
+	if empty.Alerts == nil {
+		t.Fatal("empty alerts array must decode to a non-nil slice")
+	}
+	if err := empty.validate(); err != nil {
+		t.Fatalf("validate empty alerts: %v", err)
+	}
+
+	var null alertmanagerPayload
+	if err := json.Unmarshal([]byte(`{"status":"firing","alerts":null}`), &null); err != nil {
+		t.Fatalf("unmarshal null alerts: %v", err)
+	}
+	if null.Alerts != nil {
+		t.Fatal("null alerts must decode to a nil slice")
+	}
+
+	var wrongType alertmanagerPayload
+	if err := json.Unmarshal([]byte(`{"status":"firing","alerts":{}}`), &wrongType); err == nil {
+		t.Fatal("object alerts must be rejected")
+	}
+}
+
 func TestFormatStartsAt(t *testing.T) {
 	cases := map[string]string{
 		"2026-10-24T12:00:00Z":           "2026-10-24 20:00:00",
