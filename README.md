@@ -51,6 +51,21 @@ Alertmanager --POST /webhook--> prometheus-webhook-feishu --POST--> Lark/飞书�
 | 并发超过 10 | 503 |
 | Lark 业务失败、网络错误、超时 | 502 |
 
+## 容器内自检
+
+镜像里的二进制支持 `--self-test`：通过本机 `POST /webhook` 发送一条 `LinkTest` 告警（`cluster=self-test`），完整经过鉴权、payload 解析、卡片构建和 Lark 调用，然后退出。
+
+```bash
+kubectl -n prometheus exec deploy/feishu-notify -- /prometheus-webhook-feishu --self-test
+```
+
+`deploy/feishu-notify` 按集群里的实际 Deployment 名称替换。
+
+- 成功：退出码 0，输出 `self-test passed: HTTP 200: {"status":"ok"}`，飞书群收到一张 `LinkTest` 卡片。
+- 失败：退出码 1，输出 HTTP 状态码和服务端返回的通用错误；具体原因看容器日志里的 `lark_code`、`lark_msg`。
+
+自检只连接容器内的 `127.0.0.1:<PORT>`，不会打印 Webhook URL 和 token。它要求同一容器里的服务正在运行，每次执行都会发一条真实消息。
+
 ## 本地测试
 
 不需要在宿主机安装 Go，使用 rootless podman：

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -99,6 +100,12 @@ func loadConfig(getenv func(string) string) (config, error) {
 }
 
 func main() {
+	selfTest := flag.Bool("self-test", false, "send one test alert through the local webhook and exit")
+	flag.Parse()
+	if *selfTest {
+		os.Exit(runSelfTest(os.Getenv, os.Stdout, defaultSelfTestClient()))
+	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	cfg, err := loadConfig(os.Getenv)
