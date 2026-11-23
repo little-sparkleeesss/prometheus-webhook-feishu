@@ -168,6 +168,107 @@ func TestBuildCardMessageMissingLabelsAndAnnotations(t *testing.T) {
 	}
 }
 
+func TestDetailValueSummaryAndDescription(t *testing.T) {
+	cases := []struct {
+		name        string
+		annotations map[string]string
+		want        string
+	}{
+		{
+			name:        "both",
+			annotations: map[string]string{"summary": "现象", "description": "排查：SELECT 1;"},
+			want:        "现象\n\n排查：SELECT 1;",
+		},
+		{
+			name:        "summary only",
+			annotations: map[string]string{"summary": "现象"},
+			want:        "现象",
+		},
+		{
+			name:        "description only",
+			annotations: map[string]string{"description": "排查：SELECT 1;"},
+			want:        "排查：SELECT 1;",
+		},
+		{
+			name:        "neither",
+			annotations: nil,
+			want:        "-",
+		},
+		{
+			name:        "both no value",
+			annotations: map[string]string{"summary": "<no value>", "description": "<no value>"},
+			want:        "-",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := detailValue(tc.annotations); got != tc.want {
+				t.Fatalf("detailValue = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDetailValueEscapesPartsOnce(t *testing.T) {
+	annotations := map[string]string{
+		"summary":     "a*b_c",
+		"description": "d~e`f[g]h",
+	}
+	want := "a\\*b\\_c" + detailSeparator + "d\\~e\\`f\\[g\\]h"
+
+	if got := detailValue(annotations); got != want {
+		t.Fatalf("detailValue = %q, want %q", got, want)
+	}
+}
+
+func TestDetailValueCombinedLimit(t *testing.T) {
+	both := detailValue(map[string]string{
+		"summary":     strings.Repeat("a", 600),
+		"description": strings.Repeat("b", 600),
+	})
+	if count := utf8.RuneCountInString(both); count != maxDetailRunes {
+		t.Fatalf("combined rune count = %d, want %d", count, maxDetailRunes)
+	}
+	if !strings.Contains(both, detailSeparator) {
+		t.Fatal("combined detail must contain the separator")
+	}
+
+	summaryOnly := detailValue(map[string]string{
+		"summary":     strings.Repeat("a", 1100),
+		"description": "unreachable",
+	})
+	if count := utf8.RuneCountInString(summaryOnly); count != maxDetailRunes {
+		t.Fatalf("summary-only rune count = %d, want %d", count, maxDetailRunes)
+	}
+	if strings.Contains(summaryOnly, detailSeparator) {
+		t.Fatal("truncated summary must not be followed by the separator")
+	}
+
+	droppedTail := detailValue(map[string]string{
+		"summary":     strings.Repeat("a", 997),
+		"description": "*",
+	})
+	if count := utf8.RuneCountInString(droppedTail); count != 997 {
+		t.Fatalf("dropped-tail rune count = %d, want 997", count)
+	}
+	if strings.Contains(droppedTail, detailSeparator) {
+		t.Fatal("dropped description must not leave a separator")
+	}
+}
+
+func TestBuildCardMessageShowsBothAnnotations(t *testing.T) {
+	msg := buildCardMessage(samplePayload())
+
+	detail, ok := msg.Card.Elements[2].(divTextElement)
+	if !ok {
+		t.Fatalf("element 2 = %T, want divTextElement", msg.Card.Elements[2])
+	}
+	want := "**详情**:\nCPU usage is high\n\nCPU usage is above 90% for 5 minutes"
+	if detail.Text.Content != want {
+		t.Fatalf("detail content = %q, want %q", detail.Text.Content, want)
+	}
+}
+
 func TestRenderValueEscapesLarkMD(t *testing.T) {
 	input := "a\\b*c_d~e`f[g]h"
 	want := "a\\\\b\\*c\\_d\\~e\\`f\\[g\\]h"
@@ -251,6 +352,7 @@ func TestBuildCardMessageSizeLimit(t *testing.T) {
 				"cluster":   "prod",
 			},
 			Annotations: map[string]string{
+				"summary":     strings.Repeat("摘", maxDetailRunes),
 				"description": strings.Repeat("详", maxDetailRunes),
 			},
 		}

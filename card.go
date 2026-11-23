@@ -19,6 +19,7 @@ const (
 	maxCardBytes      = 18 * 1024
 	utc8OffsetSeconds = 8 * 60 * 60
 	timeLayout        = "2006-01-02 15:04:05"
+	detailSeparator   = "\n\n"
 )
 
 var utc8 = time.FixedZone("UTC+8", utc8OffsetSeconds)
@@ -280,14 +281,32 @@ func clusterValue(p alertmanagerPayload, a alert) string {
 	return renderValue(a.Labels["cluster"], maxFieldRunes)
 }
 
+// detailValue renders the text shown under 详情. When both annotations are
+// present, summary comes first and description follows after a blank line, so
+// the card keeps the fact and the first diagnostic step together. The combined
+// value is capped at maxDetailRunes.
 func detailValue(annotations map[string]string) string {
-	if v := cleanValue(annotations["description"]); v != "" {
-		return renderValue(v, maxDetailRunes)
+	summary := cleanValue(annotations["summary"])
+	description := cleanValue(annotations["description"])
+	switch {
+	case summary == "" && description == "":
+		return "-"
+	case summary == "":
+		return renderValue(description, maxDetailRunes)
+	case description == "":
+		return renderValue(summary, maxDetailRunes)
 	}
-	if v := cleanValue(annotations["summary"]); v != "" {
-		return renderValue(v, maxDetailRunes)
+
+	head := renderValue(summary, maxDetailRunes)
+	remain := maxDetailRunes - utf8.RuneCountInString(head) - utf8.RuneCountInString(detailSeparator)
+	if remain <= 0 {
+		return head
 	}
-	return "-"
+	tail := renderValue(description, remain)
+	if tail == "" {
+		return head
+	}
+	return head + detailSeparator + tail
 }
 
 func cleanValue(raw string) string {
